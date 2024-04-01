@@ -1,7 +1,7 @@
 import { MongoClient } from 'mongodb';
 
 const url = 'mongodb://localhost:27017/';
-const dbName = 'hw5Tweets'; 
+const dbName = 'ieeevisTweets'; 
 
 async function createUserCollectionAndReferenceTweets() {
   const client = new MongoClient(url);
@@ -10,39 +10,50 @@ async function createUserCollectionAndReferenceTweets() {
     console.log('Connected correctly to server');
     const db = client.db(dbName);
 
+    // Create or update Users collection
     const usersPipeline = [
-      { $group: { _id: "$user.id", userDoc: { $first: "$user" } } },
-      { $replaceRoot: { newRoot: "$userDoc" } },
-      { $out: "Users" }
+      {
+        $group: {
+          _id: "$user.id",
+          userDoc: { $first: "$user" }
+        }
+      },
+      {
+        $replaceRoot: { newRoot: "$userDoc" }
+      },
+      {
+        $merge: {
+          into: 'Users',
+          on: '_id',
+          whenMatched: 'replace',
+          whenNotMatched: 'insert'
+        }
+      }
     ];
     await db.collection('tweets').aggregate(usersPipeline).toArray();
-    console.log('Users collection created');
+    console.log('Users collection created or updated');
 
+    // Create or update Tweets_Only collection
     const tweetsPipeline = [
-      { 
-        $project: { 
-          created_at: 1, 
-          text: 1, 
+      {
+        $project: {
+          created_at: 1,
+          text: 1,
           entities: 1,
-          user_id: { $toString: "$user.id" }
-        } 
+          user_id: { $toString: "$user.id" }, // Correct reference to user's ID
+        }
       },
-      { $out: "Tweets_Only" }
+      {
+        $merge: {
+          into: 'Tweets_Only',
+          on: '_id',
+          whenMatched: 'replace',
+          whenNotMatched: 'insert'
+        }
+      }
     ];
     await db.collection('tweets').aggregate(tweetsPipeline).toArray();
-    console.log('Tweets_Only collection created');
-
-    const usersCount = await db.collection('Users').countDocuments();
-    console.log(`Users collection contains ${usersCount} documents.`);
-
-    const tweetsCount = await db.collection('Tweets_Only').countDocuments();
-    console.log(`Tweets_Only collection contains ${tweetsCount} documents.`);
-
-    const sampleUser = await db.collection('Users').findOne();
-    console.log('Sample user document:', JSON.stringify(sampleUser, null, 2));
-
-    const sampleTweet = await db.collection('Tweets_Only').findOne();
-    console.log('Sample tweet document:', JSON.stringify(sampleTweet, null, 2));
+    console.log('Tweets_Only collection created or updated');
 
   } catch (err) {
     console.error('An error occurred:', err);
